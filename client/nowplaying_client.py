@@ -30,8 +30,10 @@ import requests
 SERVER_URL    = "http://90.189.120.103:7854/update"  # IP:порт сервера-приёмника
 AUTH_TOKEN    = "4d40fe0243728d40ae0b9e291f47315a"   # тот же токен, что на сервере
 SEND_INTERVAL = 4     # период опроса, сек
+READ_FAIL_GIVEUP = 3  # неудачных чтений подряд, после которых считаем, что
+                      # музыки нет (Doze замораживает Termux:API, когда телефон спит)
 VERBOSE       = False # True -> печатать результат каждой отправки
-PREFERRED_APPS = []   # [] = DEFAULT_PLAYERS; сюда можно вписать свой плеер
+PREFERRED_APPS = ["com.maxrave.simpmusic"]   # [] = DEFAULT_PLAYERS; сюда можно вписать свой плеер
 # ===================================================================
 
 # Termux:API (>=0.50) не отдаёт mediaSession, поэтому медиа-уведомление ищем
@@ -126,18 +128,23 @@ def main():
         print("[!] Termux:API не отвечает (%s) — буду повторять в цикле" % exc)
 
     last_err = ""
-    last = ("", "", False)   # последнее успешно прочитанное состояние
+    last = ("", "", False)   # состояние, которое шлём
+    fail_streak = 0
     while True:
         started = time.time()
         try:
             track = current_track(read_notifications())
             last = (*track, True) if track else ("", "", False)
+            fail_streak = 0
             last_err = ""
         except Exception as exc:
-            # чтение не удалось: шлём последнее известное состояние,
-            # чтобы сервер не счёл клиента умершим и не чистил био
+            # Termux:API молчит (обычно Doze заморозил listener, а музыки и нет):
+            # после READ_FAIL_GIVEUP неудач подряд публикуем «нет музыки»
+            fail_streak += 1
+            if fail_streak >= READ_FAIL_GIVEUP:
+                last = ("", "", False)
             if str(exc) != last_err:
-                print("[!] Ошибка чтения уведомлений: %s" % exc)
+                print("[!] Termux:API молчит (%s)" % exc)
                 last_err = str(exc)
 
         ok = send_state(*last)
