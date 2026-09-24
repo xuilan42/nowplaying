@@ -22,48 +22,82 @@ import json
 import subprocess
 import sys
 import time
+from datetime import datetime
 
 import requests
 
 # ============================ НАСТРОЙКИ ============================
-SERVER_URL     = "http://192.168.1.1:7854/update"  # или внешний WAN IP роутера  # IP:порт сервера-приёмника
-AUTH_TOKEN     = "CHANGE_ME_RANDOM_HEX"                   # hex: openssl rand -hex 16  # тот же токен, что на сервере
+SERVER_URL     = "http://90.189.120.103:7854/update"  # IP:порт сервера-приёмника
+AUTH_TOKEN     = "4d40fe0243728d40ae0b9e291f47315a"  # тот же токен, что на сервере
 SEND_INTERVAL  = 4        # период отправки, сек (3-5)
 PAUSE_CONFIRM  = 3.0      # прогресс не двигался дольше этого -> считаем паузой
-PREFERRED_APPS = []       # белый список пакетов плееров ([] = любой), напр.:
+PREFERRED_APPS = []       # белый список пакетов плееров ([] = DEFAULT_PLAYERS), напр.:
                           # ["com.maxmpz.audioplayer", "com.spotify.music",
                           #  "ru.yandex.music", "com.google.android.apps.youtube.music"]
 VERBOSE        = False    # True -> печатать результат каждой отправки
 # ===================================================================
 
+# Termux:API (>=0.50) не отдаёт extras с mediaSession, поэтому медиа-уведомление
+# ищем по пакету плеера. Если вашего плеера тут нет — добавьте его пакет
+# (виден в termux-notification-list -> packageName) в PREFERRED_APPS.
+DEFAULT_PLAYERS = [
+    "com.maxrave.simpmusic",                  # SIMP Music
+    "com.maxmpz.audioplayer",                 # Poweramp
+    "com.spotify.music",                      # Spotify
+    "ru.yandex.music",                        # Яндекс Музыка
+    "com.google.android.apps.youtube.music",  # YT Music
+    "fm.last.android",                        # Last.fm
+    "com.android.bluetooth",                  # звук по Bluetooth
+]
+
 # pkg -> {"progress": int, "changed_at": float}  (для детекта паузы)
 _progress_state = {}
 
 
-def read_notifications():
-    """Список активных уведомлений Android (JSON из termux-notification-list)."""
-    proc = subprocess.run(
-        ["termux-notification-list"],
-        capture_output=True, text=True, timeout=10,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError("termux-notification-list: " + (proc.stderr or "").strip())
-    return json.loads(proc.stdout)
+def read_notifications(retries=3, delay=0.7):
+    """Список активных уведомлений Android (JSON из termux-notification-list).
+
+    Termux:API при сбое listener-сервиса печатает ошибку в уведомления и
+    отдаёт ПУСТОЙ stdout с кодом 0 — поэтому пустой/битый ответ ретраим.
+    """
+    last_exc = None
+    for _ in range(retries):
+        proc = subprocess.run(
+            ["termux-notification-list"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError("termux-notification-list: " + (proc.stderr or "").strip())
+        out = proc.stdout.strip()
+        if out:
+            try:
+                return json.loads(out)
+            except json.JSONDecodeError as exc:
+                last_exc = exc
+        else:
+            last_exc = RuntimeError("пустой ответ Termux:API (listener не подключён)")
+        time.sleep(delay)
+    raise RuntimeError("termux-notification-list: %s" % last_exc)
+
+
+def _when_key(n):
+    """'when' бывает int (epoch) или строкой 'YYYY-MM-DD HH:MM:SS'."""
+    w = n.get("when")
+    if isinstance(w, (int, float)):
+        return w
+    try:
+        return datetime.strptime(str(w), "%Y-%m-%d %H:%M:%S").timestamp()
+    except ValueError:
+        return 0
 
 
 def find_media_notification(notifications):
-    """Самое свежее уведомление с медиасессией (extras['android.mediaSession'])."""
-    candidates = []
-    for n in notifications:
-        extras = n.get("extras") or {}
-        if "android.mediaSession" not in extras:
-            continue
-        if PREFERRED_APPS and n.get("packageName") not in PREFERRED_APPS:
-            continue
-        candidates.append(n)
+    """Самое свежее уведомление от плеера из белого списка."""
+    apps = PREFERRED_APPS or DEFAULT_PLAYERS
+    candidates = [n for n in notifications if n.get("packageName") in apps]
     if not candidates:
         return None
-    candidates.sort(key=lambda n: n.get("when") or 0, reverse=True)
+    candidates.sort(key=_when_key, reverse=True)
     return candidates[0]
 
 
@@ -161,6 +195,7 @@ def main():
         sys.exit("[x] Не удалось получить уведомления: %s" % exc)
 
     prev_state = None
+    last_err = ""
     while True:
         started = time.time()
         title, artist, playing = "", "", False
@@ -174,8 +209,12 @@ def main():
                     playing = False   # медиа-уведомление без трека не публикуем
             else:
                 _progress_state.clear()
+            last_err = ""
         except Exception as exc:
-            print("[!] Ошибка чтения уведомлений: %s" % exc)
+            # спамим не каждую итерацию, а только когда текст ошибки сменился
+            if str(exc) != last_err:
+                print("[!] Ошибка чтения уведомлений: %s" % exc)
+                last_err = str(exc)
 
         # Даже при паузе шлём состояние: сервер видит, что отправитель жив
         ok = send_state(title, artist, playing)
