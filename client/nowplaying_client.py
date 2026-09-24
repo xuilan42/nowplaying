@@ -122,7 +122,8 @@ def main():
         sys.exit("[x] Нет команды termux-notification-list: pkg install termux-api "
                  "+ приложение Termux:API")
     except Exception as exc:
-        sys.exit("[x] Не удалось получить уведомления: %s" % exc)
+        # Termux:API бывает заморожен системой — не выходим, цикл сам повторит
+        print("[!] Termux:API не отвечает (%s) — буду повторять в цикле" % exc)
 
     last_err = ""
     last = ("", "", False)   # последнее успешно прочитанное состояние
