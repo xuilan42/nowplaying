@@ -1,0 +1,9 @@
+{
+  "listen": "0.0.0.0:7854",
+  "token": "CHANGE_ME_RANDOM_HEX",
+  "api_id": 0,
+  "api_hash": "",
+  "phone": "",
+  "session": "/etc/nowplaying/session.json",
+  "proxy": ""
+}

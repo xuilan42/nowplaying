@@ -1,0 +1,11 @@
+# секреты и локальное
+config.json
+session.json
+*.session
+*.log
+
+# бинарники
+nowplaying-server
+nowplaying-server-*
+server/nowplaying-server*
+client/__pycache__/
