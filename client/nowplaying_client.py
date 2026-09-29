@@ -27,7 +27,7 @@ from datetime import datetime
 import requests
 
 # ============================ НАСТРОЙКИ ============================
-SERVER_URL    = "http://localhost:port/update"  # IP:порт сервера-приёмника
+SERVER_URL    = "http://localhost:7854/update"  # IP:порт сервера-приёмника
 AUTH_TOKEN    = "token"   # тот же токен, что на сервере
 SEND_INTERVAL = 4     # период опроса, сек
 READ_FAIL_GIVEUP = 3  # неудачных чтений подряд, после которых считаем, что
