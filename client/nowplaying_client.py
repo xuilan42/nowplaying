@@ -27,8 +27,8 @@ from datetime import datetime
 import requests
 
 # ============================ НАСТРОЙКИ ============================
-SERVER_URL    = "http://90.189.120.103:7854/update"  # IP:порт сервера-приёмника
-AUTH_TOKEN    = "4d40fe0243728d40ae0b9e291f47315a"   # тот же токен, что на сервере
+SERVER_URL    = "http://localhost:port/update"  # IP:порт сервера-приёмника
+AUTH_TOKEN    = "token"   # тот же токен, что на сервере
 SEND_INTERVAL = 4     # период опроса, сек
 READ_FAIL_GIVEUP = 3  # неудачных чтений подряд, после которых считаем, что
                       # музыки нет (Doze замораживает Termux:API, когда телефон спит)
